@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 
-	onelog "github.com/francoispqt/onelog"
 	"github.com/kubewarden/gjson"
 	kubewarden "github.com/kubewarden/policy-sdk-go"
+  wapc "github.com/wapc/wapc-guest-tinygo"
 )
 
 func validate(payload []byte) ([]byte, error) {
@@ -16,33 +16,71 @@ func validate(payload []byte) ([]byte, error) {
 			kubewarden.Code(400))
 	}
 
-	data := gjson.GetBytes(
+	svc_type := gjson.GetBytes(
 		payload,
-		"request.object.metadata.name")
-
-	if !data.Exists() {
-		logger.Warn("cannot read object name from metadata: accepting request")
+		"request.object.spec.type")
+	if !svc_type.Exists() {
+		logger.Warn("cannot read svc type: accepting request")
 		return kubewarden.AcceptRequest()
 	}
-	name := data.String()
 
-	logger.DebugWithFields("validating ingress object", func(e onelog.Entry) {
-		namespace := gjson.GetBytes(payload, "request.object.metadata.namespace").String()
-		e.String("name", name)
-		e.String("namespace", namespace)
-	})
-
-	if settings.DeniedNames.Contains(name) {
-		logger.InfoWithFields("rejecting ingress object", func(e onelog.Entry) {
-			e.String("name", name)
-			e.String("denied_names", settings.DeniedNames.String())
-		})
-
-		return kubewarden.RejectRequest(
-			kubewarden.Message(
-				fmt.Sprintf("The '%s' name is on the deny list", name)),
-			kubewarden.NoCode)
+  svc_ns := gjson.GetBytes(
+    payload,
+    "request.object.metadata.namespace")
+	if !svc_ns.Exists() {
+		logger.Warn("cannot read svc NS: accepting request")
+		return kubewarden.AcceptRequest()
 	}
 
-	return kubewarden.AcceptRequest()
+  existing_ns_list, err := wapc.HostCall("kubernetes", "namespaces", "list", []byte(""))
+  if err != nil {
+    return kubewarden.RejectRequest(
+      kubewarden.Message(err.Error()),
+      kubewarden.Code(400))
+  }
+  logger.Info("Got existing NS List: ")
+  logger.Info(string(existing_ns_list))
+  existing_ns := gjson.GetBytes(
+    existing_ns_list,
+    "items")
+
+  // res will hold pointer to namespace
+  var res *gjson.Result
+  existing_ns.ForEach(func(key, value gjson.Result) bool {
+    ns_name := value.Get("metadata.name")
+    if ns_name.String() == svc_ns.String() {
+      logger.Info("FOUND NS " + ns_name.String())
+      res = &value
+    }
+    return true
+  })
+  if res == nil {
+    return kubewarden.RejectRequest(
+      kubewarden.Message(fmt.Sprintf("NS not found")),
+        kubewarden.NoCode)
+  }
+
+ // go through annotations of NS and check any of them is in settings
+  set_annos := res.Get("metadata.annotations")
+  logger.Info("Annos of existing NS "+set_annos.String())
+  if !set_annos.Exists(){
+    return kubewarden.RejectRequest(
+      kubewarden.Message(fmt.Sprintf("NS has no annotations")),
+        kubewarden.NoCode)
+  }
+  found := false
+  set_annos.ForEach(func(key, value gjson.Result) bool {
+    logger.Info("if "+settings.AllowNodePortAnnotations.String()+" contains "+key.String())
+    if settings.AllowNodePortAnnotations.Contains(key.String()){
+      found = true
+    }
+    return true
+  })
+  if found {
+    return kubewarden.AcceptRequest()
+  }
+
+  return kubewarden.RejectRequest(
+    kubewarden.Message(fmt.Sprintf("Missing required annotations on NS : ", settings.AllowNodePortAnnotations)),
+      kubewarden.NoCode)
 }

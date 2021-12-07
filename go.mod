@@ -1,4 +1,4 @@
-module github.com/kubewarden/go-policy-template
+module github.com/Pidu2/kubewarden-go-policy
 
 go 1.15
 

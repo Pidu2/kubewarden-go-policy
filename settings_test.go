@@ -9,7 +9,7 @@ func TestParsingSettingsWithAllValuesProvidedFromValidationReq(t *testing.T) {
 	{
 		"request": "doesn't matter here",
 		"settings": {
-			"denied_names": [ "foo", "bar" ]
+			"annotation": [ "foo", "bar" ]
 		}
 	}
 	`
@@ -22,7 +22,7 @@ func TestParsingSettingsWithAllValuesProvidedFromValidationReq(t *testing.T) {
 
 	expected := []string{"foo", "bar"}
 	for _, exp := range expected {
-		if !settings.DeniedNames.Contains(exp) {
+		if !settings.AllowNodePortAnnotations.Contains(exp) {
 			t.Errorf("Missing value %s", exp)
 		}
 	}
@@ -43,14 +43,18 @@ func TestParsingSettingsWithNoValueProvided(t *testing.T) {
 		t.Errorf("Unexpected error %+v", err)
 	}
 
-	if settings.DeniedNames.Cardinality() != 0 {
-		t.Errorf("Expecpted DeniedNames to be empty")
+	if settings.AllowNodePortAnnotations.Cardinality() != 0 {
+		t.Errorf("Expecpted AllowNodePortAnnotations to be empty")
 	}
 }
 
 func TestSettingsAreValid(t *testing.T) {
 	request := `
 	{
+    "request": "doesnt matter",
+    "settings": {
+      "annotation": ["foo", "bar"]
+    }
 	}
 	`
 	rawRequest := []byte(request)

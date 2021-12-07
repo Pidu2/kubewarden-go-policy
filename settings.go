@@ -9,7 +9,7 @@ import (
 )
 
 type Settings struct {
-	DeniedNames mapset.Set `json:"denied_names"`
+	AllowNodePortAnnotations mapset.Set `json:"annotation"`
 }
 
 // Builds a new Settings instance starting from a validation
@@ -23,7 +23,7 @@ type Settings struct {
 func NewSettingsFromValidationReq(payload []byte) (Settings, error) {
 	return newSettings(
 		payload,
-		"settings.denied_names")
+		"settings.annotation")
 }
 
 // Builds a new Settings instance starting from a Settings
@@ -34,7 +34,7 @@ func NewSettingsFromValidationReq(payload []byte) (Settings, error) {
 func NewSettingsFromValidateSettingsPayload(payload []byte) (Settings, error) {
 	return newSettings(
 		payload,
-		"denied_names")
+		"annotation")
 }
 
 func newSettings(payload []byte, paths ...string) (Settings, error) {
@@ -44,14 +44,14 @@ func newSettings(payload []byte, paths ...string) (Settings, error) {
 
 	data := gjson.GetManyBytes(payload, paths...)
 
-	deniedNames := mapset.NewThreadUnsafeSet()
+	allowNodePortAnnotation := mapset.NewThreadUnsafeSet()
 	data[0].ForEach(func(_, entry gjson.Result) bool {
-		deniedNames.Add(entry.String())
+		allowNodePortAnnotation.Add(entry.String())
 		return true
 	})
 
 	return Settings{
-		DeniedNames: deniedNames,
+		AllowNodePortAnnotations: allowNodePortAnnotation,
 	}, nil
 }
 
@@ -61,8 +61,6 @@ func (s *Settings) Valid() (bool, error) {
 }
 
 func validateSettings(payload []byte) ([]byte, error) {
-	logger.Info("validating settings")
-
 	settings, err := NewSettingsFromValidateSettingsPayload(payload)
 	if err != nil {
 		return kubewarden.RejectSettings(kubewarden.Message(err.Error()))
@@ -76,6 +74,5 @@ func validateSettings(payload []byte) ([]byte, error) {
 		return kubewarden.AcceptSettings()
 	}
 
-	logger.Warn("rejecting settings")
 	return kubewarden.RejectSettings(kubewarden.Message("Provided settings are not valid"))
 }
